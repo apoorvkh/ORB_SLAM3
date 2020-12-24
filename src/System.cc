@@ -39,7 +39,7 @@ namespace ORB_SLAM3
 Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;
 
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
-               const bool bUseViewer, const int initFr, const string &strSequence, const string &strLoadingFile):
+               const bool bUseViewer, const int initFr, const string &strSequence, const string &strLoadingFile, const cv::Mat &initPose):
     mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false), mbResetActiveMap(false),
     mbActivateLocalizationMode(false), mbDeactivateLocalizationMode(false)
 {
@@ -174,7 +174,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     //(it will live in the main thread of execution, the one that called this constructor)
     cout << "Seq. Name: " << strSequence << endl;
     mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
-                             mpAtlas, mpKeyFrameDatabase, strSettingsFile, mSensor, strSequence);
+                             mpAtlas, mpKeyFrameDatabase, strSettingsFile, mSensor, initPose, strSequence);
 
     //Initialize the Local Mapping thread and launch
     mpLocalMapper = new LocalMapping(this, mpAtlas, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR, mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO, strSequence);
@@ -437,6 +437,13 @@ void System::Reset()
 {
     unique_lock<mutex> lock(mMutexReset);
     mbReset = true;
+}
+
+void System::Reset(const cv::Mat &newPose)
+{
+    unique_lock<mutex> lock(mMutexReset);
+    mbReset = true;
+    mpTracker->SetInitPose(newPose);
 }
 
 void System::ResetActiveMap()
@@ -859,6 +866,31 @@ int System::GetTrackingState()
 {
     unique_lock<mutex> lock(mMutexState);
     return mTrackingState;
+}
+
+cv::Mat System::GetWorldPose() {
+    unique_lock<mutex> lock(mMutexState);
+
+    cv::Mat Tcw = mpTracker->mCurrentFrame.mTcw;
+    cv::Mat Trw = cv::Mat::eye(4, 4, CV_32F);
+
+    if(Tcw.empty()) {
+        ORB_SLAM3::KeyFrame* pKF = mpTracker->mlpReferences.back();
+        while(pKF->isBad()) {
+            Trw = Trw * pKF->mTcp;
+            pKF = pKF->GetParent();
+        }
+        Trw = Trw * pKF->GetPose();
+        cv::Mat relPose = mpTracker->mlRelativeFramePoses.back();
+        Tcw = relPose * Trw;
+    }
+
+    cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
+    cv::Mat tcw = Tcw.rowRange(0,3).col(3);
+    cv::Mat twc = -Rwc*tcw;
+    Rwc.copyTo(Trw.rowRange(0,3).colRange(0,3));
+    twc.copyTo(Trw.rowRange(0,3).col(3));
+    return Trw;
 }
 
 vector<MapPoint*> System::GetTrackedMapPoints()

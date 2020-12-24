@@ -58,7 +58,7 @@ class Tracking
 
 public:
     Tracking(System* pSys, ORBVocabulary* pVoc, FrameDrawer* pFrameDrawer, MapDrawer* pMapDrawer, Atlas* pAtlas,
-             KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, const string &_nameSeq=std::string());
+             KeyFrameDatabase* pKFDB, const string &strSettingPath, const int sensor, const cv::Mat &initPose, const string &_nameSeq=std::string());
 
     ~Tracking();
 
@@ -75,6 +75,7 @@ public:
 
     void GrabImuData(const IMU::Point &imuMeasurement);
 
+    void SetInitPose(const cv::Mat &pose);
     void SetLocalMapper(LocalMapping* pLocalMapper);
     void SetLoopClosing(LoopClosing* pLoopClosing);
     void SetViewer(Viewer* pViewer);
@@ -264,6 +265,9 @@ protected:
 
     //Atlas
     Atlas* mpAtlas;
+
+    //Initial keyframe pose
+    cv::Mat mInitPose;
 
     //Calibration matrix
     cv::Mat mK;
